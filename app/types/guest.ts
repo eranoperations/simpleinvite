@@ -4,6 +4,7 @@ export type MealPreference = 'meat' | 'vegetarian' | 'vegan' | 'kosher' | 'other
 
 export interface Guest {
     id: string;
+    userId: string; // Associate guest with user
     name: string;
     phone: string; // Making phone required
     status: GuestStatus;

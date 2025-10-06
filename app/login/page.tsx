@@ -3,12 +3,26 @@
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
+  const handleGoogleSignIn = async () => {
+    try {
+      console.log('🔄 Starting Google sign in...');
+      const result = await signIn('google', { 
+        callbackUrl: '/dashboard',
+        redirect: true 
+      });
+      console.log('✅ Sign in result:', result);
+    } catch (error) {
+      console.error('❌ Sign in error:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="p-8 bg-white rounded-lg shadow-md">
         <h1 className="text-2xl font-bold text-center mb-8">Wedding RSVP Login</h1>
+        
         <button
-          onClick={() => signIn('google', { callbackUrl: '/' })}
+          onClick={handleGoogleSignIn}
           className="w-full flex items-center justify-center gap-2 bg-white text-gray-700 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">

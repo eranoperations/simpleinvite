@@ -8,6 +8,7 @@ interface GuestContextType {
   addGuest: (guest: Guest) => Promise<void>;
   addGuests: (guests: Guest[]) => Promise<void>;
   updateGuest: (guestId: string, updates: Partial<Guest>) => Promise<void>;
+  deleteGuest: (guestId: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
 }
@@ -98,8 +99,22 @@ export function GuestProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const deleteGuest = useCallback(async (guestId: string) => {
+    try {
+      const response = await fetch(`/api/guests/${guestId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) throw new Error('Failed to delete guest');
+      setGuests(prev => prev.filter(guest => guest.id !== guestId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete guest');
+      throw err;
+    }
+  }, []);
+
   return (
-    <GuestContext.Provider value={{ guests, addGuest, addGuests, updateGuest, isLoading, error }}>
+    <GuestContext.Provider value={{ guests, addGuest, addGuests, updateGuest, deleteGuest, isLoading, error }}>
       {children}
     </GuestContext.Provider>
   );

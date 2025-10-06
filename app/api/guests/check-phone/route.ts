@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import GuestModel from '@/models/Guest';
+import { auth } from '@/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const phone = request.nextUrl.searchParams.get('phone');
     
     if (!phone) {
@@ -14,7 +24,11 @@ export async function GET(request: NextRequest) {
     }
 
     await dbConnect();
-    const existingGuest = await GuestModel.findOne({ phone });
+    // Check if phone exists for this specific user only
+    const existingGuest = await GuestModel.findOne({ 
+      phone, 
+      userId: session.user.id 
+    });
     
     return NextResponse.json({ exists: !!existingGuest });
   } catch (error) {

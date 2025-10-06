@@ -1,7 +1,8 @@
 'use client';
 
-import { Guest, GuestStatus } from '@/types/guest';
+import { Guest, GuestStatus } from '@/app/types/guest';
 import { useGuests } from '@/app/contexts/GuestContext';
+import Link from 'next/link';
 
 export default function Dashboard() {
   const { guests } = useGuests();
@@ -47,49 +48,28 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Guest List Section */}
+      {/* Quick Actions */}
       <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4">Guest List</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Meal</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendees</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {guests.map((guest) => (
-                <tr key={guest.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {guest.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      guest.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                      guest.status === 'declined' ? 'bg-red-100 text-red-800' :
-                      guest.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {guest.status.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {guest.mealPreference}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {guest.numberOfAttendees}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {guest.email || guest.phone || 'No contact info'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <h2 className="text-2xl font-semibold mb-4">Quick Actions</h2>
+        <div className="flex flex-wrap gap-4">
+          <Link
+            href="/dashboard/guest-management"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+          >
+            Manage Guests
+          </Link>
+          <Link
+            href="/dashboard/guest-management?tab=add"
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+          >
+            Add New Guest
+          </Link>
+          <Link
+            href="/dashboard/guest-management?tab=import"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+          >
+            Import Guests
+          </Link>
         </div>
       </div>
     </div>

@@ -1,23 +1,27 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { NextRequest, NextResponse } from "next/server";
 
-export default auth((req) => {
-  const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
-  const isPublicRoute = nextUrl.pathname === "/login";
+export function middleware(request: NextRequest) {
+  const { nextUrl } = request;
+  
+  // Check for any authentication cookie (NextAuth uses various cookie names)
+  const cookies = request.cookies.getAll();
+  const authCookies = cookies.filter(cookie => 
+    cookie.name.includes('session-token') || 
+    cookie.name.includes('authjs') ||
+    cookie.name.includes('next-auth')
+  );
+  
+  const isLoggedIn = authCookies.length > 0;
 
-  // Redirect to login if not authenticated and trying to access protected route
-  if (!isLoggedIn && !isPublicRoute) {
-    return NextResponse.redirect(new URL("/login", nextUrl.origin));
+  // Only redirect if logged in user tries to access login page
+  if (isLoggedIn && nextUrl.pathname === "/login") {
+    const dashboardUrl = new URL("/dashboard", nextUrl.origin);
+    return NextResponse.redirect(dashboardUrl);
   }
 
-  // Redirect to dashboard if logged in and trying to access login page
-  if (isLoggedIn && isPublicRoute) {
-    return NextResponse.redirect(new URL("/dashboard", nextUrl.origin));
-  }
-
+  // Allow access to all other routes without authentication
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
