@@ -17,6 +17,13 @@ const guestSchema = new mongoose.Schema<Guest>({
     default: 'other'
   },
   numberOfAttendees: { type: Number, required: true, default: 1 },
+  mealCounts: {
+    meat: { type: Number, default: 0 },
+    vegetarian: { type: Number, default: 0 },
+    vegan: { type: Number, default: 0 },
+    kosher: { type: Number, default: 0 },
+    other: { type: Number, default: 1 }
+  },
   tableNumber: { type: Number },
   specialRequests: { type: String },
   dateResponded: { type: Date },

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Guest, GuestStatus, MealPreference } from '@/app/types/guest';
+import { GuestStatus, MealPreference, MealCounts } from '@/app/types/guest';
 import { useGuests } from '@/app/contexts/GuestContext';
 
 export default function GuestEntryForm() {
@@ -18,40 +18,85 @@ export default function GuestEntryForm() {
     mealPreference: 'other' as MealPreference,
     numberOfAttendees: 1,
     specialRequests: '',
+    mealCounts: {
+      meat: 0,
+      vegetarian: 0,
+      vegan: 0,
+      kosher: 0,
+      other: 1,
+    },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Calculate total meals selected
+  const totalMeals = Object.values(formData.mealCounts).reduce((sum, count) => sum + count, 0);
+  
+  // Validation function
+  const isMealCountValid = totalMeals === formData.numberOfAttendees;
+
+  // Handle number of attendees change
+  const handleAttendeesChange = (newCount: number) => {
+    const currentTotal = totalMeals;
+    const difference = newCount - currentTotal;
+    
+    // Auto-adjust meal counts when attendees change
+    const newMealCounts = { ...formData.mealCounts };
+    
+    if (difference > 0) {
+      // Add meals to the default preference (other)
+      newMealCounts.other += difference;
+    } else if (difference < 0) {
+      // Remove meals starting from other, then working backwards
+      let toRemove = Math.abs(difference);
+      const mealTypes: (keyof MealCounts)[] = ['other', 'kosher', 'vegan', 'vegetarian', 'meat'];
+      
+      for (const mealType of mealTypes) {
+        if (toRemove <= 0) break;
+        const canRemove = Math.min(newMealCounts[mealType], toRemove);
+        newMealCounts[mealType] -= canRemove;
+        toRemove -= canRemove;
+      }
+    }
+    
+    setFormData({
+      ...formData,
+      numberOfAttendees: newCount,
+      mealCounts: newMealCounts
+    });
+  };
+
+  // Handle meal count change
+  const handleMealCountChange = (mealType: keyof MealCounts, count: number) => {
+    setFormData({
+      ...formData,
+      mealCounts: {
+        ...formData.mealCounts,
+        [mealType]: Math.max(0, count)
+      }
+    });
+  };
+
+    const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check if user is logged in
-    if (!session?.user) {
-      setShowAuthError(true);
-      setSubmitError('You must be logged in to add guests');
+    if (!session?.user?.id) {
+      alert('You must be logged in to add guests');
       return;
     }
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setShowAuthError(false);
+    // Validate meal counts match number of attendees
+    if (!isMealCountValid) {
+      alert(`Total meals (${totalMeals}) must equal number of attendees (${formData.numberOfAttendees})`);
+      return;
+    }
 
     try {
-      // Check if phone number already exists
-      const response = await fetch(`/api/guests/check-phone?phone=${encodeURIComponent(formData.phone)}`);
-      const { exists } = await response.json();
-      
-      if (exists) {
-        setSubmitError('A guest with this phone number already exists');
-        return;
-      }
-
-      const newGuest: Guest = {
-        id: crypto.randomUUID(),
-        userId: session.user.id!, // Add userId from session
+      await addGuest({
         ...formData,
-        dateInvited: new Date(),
-      };
+        userId: session.user.id,
+        id: `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      });
       
-      await addGuest(newGuest);
+      alert('Guest added successfully!');
       
       // Reset form on success
       setFormData({
@@ -61,11 +106,17 @@ export default function GuestEntryForm() {
         mealPreference: 'other',
         numberOfAttendees: 1,
         specialRequests: '',
+        mealCounts: {
+          meat: 0,
+          vegetarian: 0,
+          vegan: 0,
+          kosher: 0,
+          other: 1,
+        },
       });
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Failed to add guest');
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error adding guest:', error);
+      alert('Failed to add guest. Please try again.');
     }
   };
 
@@ -150,26 +201,86 @@ export default function GuestEntryForm() {
             type="number"
             min="1"
             value={formData.numberOfAttendees}
-            onChange={e => setFormData({...formData, numberOfAttendees: parseInt(e.target.value)})}
+            onChange={e => handleAttendeesChange(parseInt(e.target.value) || 1)}
             className="w-full p-2 border rounded"
             disabled={isSubmitting}
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Meal Preference</label>
-          <select
-            value={formData.mealPreference}
-            onChange={e => setFormData({...formData, mealPreference: e.target.value as MealPreference})}
-            className="w-full p-2 border rounded"
-            disabled={isSubmitting}
-          >
-            <option value="meat">Meat</option>
-            <option value="vegetarian">Vegetarian</option>
-            <option value="vegan">Vegan</option>
-            <option value="kosher">Kosher</option>
-            <option value="other">Other</option>
-          </select>
+          <label className="block text-sm font-medium mb-1">
+            Meal Counts 
+            <span className={`ml-2 text-sm ${isMealCountValid ? 'text-green-600' : 'text-red-600'}`}>
+              (Total: {totalMeals}/{formData.numberOfAttendees})
+            </span>
+          </label>
+          <div className="grid grid-cols-2 gap-4 mt-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Meat</label>
+              <input
+                type="number"
+                min="0"
+                max={formData.numberOfAttendees}
+                value={formData.mealCounts.meat}
+                onChange={e => handleMealCountChange('meat', parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded text-sm"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Vegetarian</label>
+              <input
+                type="number"
+                min="0"
+                max={formData.numberOfAttendees}
+                value={formData.mealCounts.vegetarian}
+                onChange={e => handleMealCountChange('vegetarian', parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded text-sm"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Vegan</label>
+              <input
+                type="number"
+                min="0"
+                max={formData.numberOfAttendees}
+                value={formData.mealCounts.vegan}
+                onChange={e => handleMealCountChange('vegan', parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded text-sm"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Kosher</label>
+              <input
+                type="number"
+                min="0"
+                max={formData.numberOfAttendees}
+                value={formData.mealCounts.kosher}
+                onChange={e => handleMealCountChange('kosher', parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded text-sm"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Other</label>
+              <input
+                type="number"
+                min="0"
+                max={formData.numberOfAttendees}
+                value={formData.mealCounts.other}
+                onChange={e => handleMealCountChange('other', parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded text-sm"
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+          {!isMealCountValid && (
+            <p className="text-red-600 text-sm mt-1">
+              Total meals must equal number of attendees
+            </p>
+          )}
         </div>
 
         <div>
@@ -185,8 +296,12 @@ export default function GuestEntryForm() {
 
         <button
           type="submit"
-          className={`w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed`}
-          disabled={isSubmitting}
+          className={`w-full py-2 px-4 rounded font-medium transition-colors ${
+            isSubmitting || !isMealCountValid
+              ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+              : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+          disabled={isSubmitting || !isMealCountValid}
         >
           {isSubmitting ? 'Adding Guest...' : 'Add Guest'}
         </button>

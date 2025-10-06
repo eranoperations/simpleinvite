@@ -70,6 +70,18 @@ export default function Dashboard() {
           >
             Import Guests
           </Link>
+          <Link
+            href="/dashboard/invitations"
+            className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+          >
+            Create Invitations
+          </Link>
+          <Link
+            href="/dashboard/invitation-preview"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+          >
+            Preview Invitation
+          </Link>
         </div>
       </div>
     </div>

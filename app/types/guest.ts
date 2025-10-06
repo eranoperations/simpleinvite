@@ -2,6 +2,14 @@ export type GuestStatus = 'pending' | 'confirmed' | 'declined' | 'not_sent';
 
 export type MealPreference = 'meat' | 'vegetarian' | 'vegan' | 'kosher' | 'other';
 
+export interface MealCounts {
+    meat: number;
+    vegetarian: number;
+    vegan: number;
+    kosher: number;
+    other: number;
+}
+
 export interface Guest {
     id: string;
     userId: string; // Associate guest with user
@@ -10,6 +18,7 @@ export interface Guest {
     status: GuestStatus;
     mealPreference: MealPreference;
     numberOfAttendees: number;
+    mealCounts: MealCounts;
     tableNumber?: number;
     specialRequests?: string;
     dateResponded?: Date;
