@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove experimental turbopack config as it's causing issues
+  // Playwright must not be bundled by Next's server compiler — it needs to
+  // resolve its own browser binaries at runtime.
+  serverExternalPackages: ['playwright', 'mongoose', 'bcryptjs'],
 }
 
 module.exports = nextConfig

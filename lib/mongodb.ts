@@ -1,40 +1,44 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose'
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI
 
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env');
+interface MongooseCache {
+  conn: typeof mongoose | null
+  promise: Promise<typeof mongoose> | null
 }
 
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+// Next.js hot-reloads modules in dev; without a global cache each reload opens
+// a fresh pool and the connection count climbs until Mongo refuses new ones.
+declare global {
+  var _mongoose: MongooseCache | undefined
 }
 
-async function dbConnect() {
-  if (cached.conn) {
-    return cached.conn;
+const cached: MongooseCache = global._mongoose ?? { conn: null, promise: null }
+global._mongoose = cached
+
+export async function connectDB(): Promise<typeof mongoose> {
+  if (cached.conn) return cached.conn
+
+  if (!MONGODB_URI) {
+    throw new Error(
+      'MONGODB_URI is not set. Copy .env.example to .env.local and point it at your database.',
+    )
   }
 
   if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose;
-    });
+    cached.promise = mongoose
+      .connect(MONGODB_URI, {
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 10_000,
+      })
+      .catch((err) => {
+        // Clear the rejected promise so the next request retries instead of
+        // replaying the same failure forever.
+        cached.promise = null
+        throw err
+      })
   }
 
-  try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    throw e;
-  }
-
-  return cached.conn;
+  cached.conn = await cached.promise
+  return cached.conn
 }
-
-export default dbConnect;
