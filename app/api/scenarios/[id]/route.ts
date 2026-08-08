@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> }
 const Patch = z.object({
   name: z.string().min(1).max(120).optional(),
   sourceText: z.string().min(1).max(20_000).optional(),
-  mapId: z.string().max(64).nullable().optional(),
+  stepDelayMs: z.number().int().min(0).max(30_000).optional(),
 })
 
 function owned(id: string, userId: string): ScenarioRow | undefined {
@@ -60,21 +60,17 @@ export async function PATCH(request: Request, { params }: Params) {
   const db = getDb()
   const name = parsed.data.name?.trim() ?? scenario.name
   const sourceText = parsed.data.sourceText ?? scenario.source_text
-  const mapId = parsed.data.mapId === undefined ? scenario.map_id : parsed.data.mapId || null
-
-  if (mapId && !db.prepare('SELECT 1 FROM maps WHERE id = ? AND user_id = ?').get(mapId, user.id)) {
-    return NextResponse.json({ error: 'That map was not found.' }, { status: 400 })
-  }
+  const stepDelayMs = parsed.data.stepDelayMs ?? scenario.step_delay_ms
 
   // Editing the text invalidates the compiled steps — replaying stale steps
   // against a rewritten scenario is worse than refusing to run.
   const textChanged = sourceText !== scenario.source_text
 
   db.prepare(
-    `UPDATE scenarios SET name = ?, source_text = ?, map_id = ?, updated_at = ?
+    `UPDATE scenarios SET name = ?, source_text = ?, step_delay_ms = ?, updated_at = ?
        ${textChanged ? ', compiled_json = NULL, compiled_at = NULL, compile_error = NULL' : ''}
      WHERE id = ?`,
-  ).run(name, sourceText, mapId, now(), id)
+  ).run(name, sourceText, stepDelayMs, now(), id)
 
   return NextResponse.json({ ok: true, recompileNeeded: textChanged })
 }

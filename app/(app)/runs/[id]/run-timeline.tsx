@@ -7,6 +7,7 @@ import { formatDuration, formatWhen, STEP_STYLES, statusClass } from '@/lib/ui'
 export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
   const [run, setRun] = useState(initialRun)
   const [openStep, setOpenStep] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const live = run.status === 'queued' || run.status === 'running'
 
@@ -26,6 +27,12 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
 
   async function cancel() {
     await fetch(`/api/runs/${run.id}/cancel`, { method: 'POST' })
+  }
+
+  async function copyOutput() {
+    await navigator.clipboard.writeText(formatRunOutput(run))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const passed = run.steps.filter((s) => s.status === 'passed' || s.status === 'repaired').length
@@ -56,6 +63,13 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
           <span className="text-sm text-slate-400">
             {passed}/{run.steps.length || run.progress.total} steps passed
           </span>
+          <button
+            onClick={copyOutput}
+            disabled={run.steps.length === 0}
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm hover:border-slate-500 disabled:opacity-50"
+          >
+            {copied ? 'Copied!' : 'Copy output'}
+          </button>
           {live && (
             <button
               onClick={cancel}
@@ -176,4 +190,24 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
       )}
     </div>
   )
+}
+
+function formatRunOutput(run: RunDto): string {
+  const lines = [
+    `${run.scenarioName} — ${run.status}`,
+    `${formatWhen(run.createdAt)}${run.durationMs ? ` · ${formatDuration(run.durationMs)}` : ''}`,
+    run.aiRepairs > 0 ? `${run.aiRepairs} selector${run.aiRepairs === 1 ? '' : 's'} repaired by AI` : null,
+    run.error ? `Error: ${run.error}` : null,
+    '',
+    ...run.steps.map((step) => {
+      const parts = [`${step.idx + 1}. [${step.status}] ${step.action} — ${step.description}`]
+      if (step.detail) parts.push(`   ${step.detail}`)
+      if (step.selectorUsed) parts.push(`   selector: ${step.selectorUsed}`)
+      if (step.url) parts.push(`   url: ${step.url}`)
+      for (const err of step.consoleErrors) parts.push(`   console error: ${err}`)
+      return parts.join('\n')
+    }),
+  ]
+
+  return lines.filter((l): l is string => l !== null).join('\n')
 }

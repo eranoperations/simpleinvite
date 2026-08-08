@@ -1,10 +1,12 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { getDb, newId, now, SCREENSHOT_DIR } from '@/lib/db'
-import type { MapRow, ScenarioRow } from '@/lib/db/types'
+import type { MapRow, ScenarioRow, TestUserRow } from '@/lib/db/types'
 import { launchBrowser, newContext } from '@/lib/crawl/browser'
 import { crawlSite } from '@/lib/crawl/crawler'
 import { getProfile } from '@/lib/crawl/profiles'
 import { executeSteps } from '@/lib/scenario/executor'
+import { buildLoginSteps } from '@/lib/scenario/login-steps'
 import { parseStepsJson } from '@/lib/scenario/steps'
 import { acquireSlot, register, releaseSlot, unregister } from './registry'
 
@@ -42,8 +44,20 @@ export async function runMapJob(mapId: string): Promise<void> {
 
         // An authenticated map logs in first and crawls in the same context, so
         // cookies and storage carry into every page visit.
-        if (map.login_scenario_id) {
-          setProgress(mapId, 0, profile.maxPages, 'Signing in to the site')
+        let loginSteps: ReturnType<typeof buildLoginSteps> | null = null
+        let loginKind: 'scenario' | 'test user' | null = null
+        let stepPauseMs: number | undefined
+
+        if (map.test_user_id) {
+          const testUser = db
+            .prepare('SELECT * FROM test_users WHERE id = ?')
+            .get(map.test_user_id) as TestUserRow | undefined
+          if (!testUser) {
+            throw new Error('The saved test user for this map no longer exists.')
+          }
+          loginSteps = buildLoginSteps(testUser)
+          loginKind = 'test user'
+        } else if (map.login_scenario_id) {
           const scenario = db
             .prepare('SELECT * FROM scenarios WHERE id = ?')
             .get(map.login_scenario_id) as ScenarioRow | undefined
@@ -54,20 +68,33 @@ export async function runMapJob(mapId: string): Promise<void> {
               'The sign-in scenario has not been compiled yet. Open it, compile it, and run this map again.',
             )
           }
+          loginSteps = steps
+          loginKind = 'scenario'
+          stepPauseMs = scenario.step_delay_ms
+        }
+
+        if (loginSteps) {
+          setProgress(mapId, 0, profile.maxPages, 'Signing in to the site')
 
           const login = await executeSteps(context, {
-            steps,
+            steps: loginSteps,
             baseUrl: map.target_url,
             screenshotDir: path.join(screenshotDir, 'login'),
             onStep: () => {},
             onProgress: (_c, _t, message) => setProgress(mapId, 0, profile.maxPages, `Sign-in: ${message}`),
             signal: controller.signal,
+            stepPauseMs,
           })
 
           if (login.failed) {
             const failedStep = login.outcomes.find((o) => o.status === 'failed')
+            const hint =
+              loginKind === 'test user'
+                ? ' The test user signs in generically (common email/username and password fields); create a sign-in scenario instead if this site needs something more specific.'
+                : ''
             throw new Error(
-              `Sign-in failed, so the map would only show public pages. ${failedStep?.description ?? ''} — ${failedStep?.detail ?? ''}`.trim(),
+              `Sign-in failed, so the map would only show public pages. ${failedStep?.description ?? ''} — ${failedStep?.detail ?? ''}`.trim() +
+                hint,
             )
           }
         }
@@ -191,4 +218,25 @@ export function launchMapJob(mapId: string): void {
   void runMapJob(mapId).catch((err) => {
     console.error(`[map ${mapId}] unhandled:`, err)
   })
+}
+
+/**
+ * Wipes a map's graph back to nothing, keeping the row (and its sign-in
+ * settings) so the one-map-per-website invariant never has to be re-created —
+ * the caller is responsible for confirming the map is not currently running.
+ */
+export function clearMap(mapId: string): void {
+  const db = getDb()
+  db.transaction(() => {
+    db.prepare('DELETE FROM map_nodes WHERE map_id = ?').run(mapId)
+    db.prepare('DELETE FROM map_edges WHERE map_id = ?').run(mapId)
+    db.prepare(
+      `UPDATE maps SET status = 'idle', progress_current = 0, progress_total = 0,
+         progress_message = 'Not mapped yet', error = NULL, stats_json = NULL,
+         started_at = NULL, finished_at = NULL
+       WHERE id = ?`,
+    ).run(mapId)
+  })()
+
+  fs.rmSync(path.join(SCREENSHOT_DIR, 'maps', mapId), { recursive: true, force: true })
 }

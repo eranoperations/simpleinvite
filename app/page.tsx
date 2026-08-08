@@ -13,7 +13,7 @@ export default async function LandingPage() {
         <nav className="flex items-center gap-3 text-sm">
           {user ? (
             <Link
-              href="/maps"
+              href="/websites"
               className="rounded-lg bg-sky-500 px-4 py-2 font-medium text-white hover:bg-sky-400"
             >
               Open the app
@@ -47,7 +47,7 @@ export default async function LandingPage() {
 
         <div className="mt-10 flex gap-4">
           <Link
-            href={user ? '/maps/new' : '/register'}
+            href={user ? '/websites/new' : '/register'}
             className="rounded-lg bg-sky-500 px-6 py-3 font-medium text-white hover:bg-sky-400"
           >
             {user ? 'Map a site' : 'Get started'}

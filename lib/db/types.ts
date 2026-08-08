@@ -1,8 +1,9 @@
 /** Row shapes exactly as better-sqlite3 hands them back (snake_case, no dates). */
 
-export type JobStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled'
+/** 'idle' is a map-only state: created but never crawled, or just cleared. */
+export type JobStatus = 'idle' | 'queued' | 'running' | 'complete' | 'failed' | 'cancelled'
 export type NodeKind = 'page' | 'external' | 'unvisited'
-export type EdgeKind = 'link' | 'button' | 'form' | 'redirect'
+export type EdgeKind = 'link' | 'button' | 'form' | 'redirect' | 'scenario'
 export type StepStatus = 'pending' | 'running' | 'passed' | 'failed' | 'repaired' | 'skipped'
 
 export interface UserRow {
@@ -23,12 +24,14 @@ export interface SessionRow {
 export interface MapRow {
   id: string
   user_id: string
+  website_id: string | null
   target_url: string
   hostname: string
   label: string | null
   status: JobStatus
   depth_profile: string
   login_scenario_id: string | null
+  test_user_id: string | null
   progress_current: number
   progress_total: number
   progress_message: string
@@ -66,9 +69,21 @@ export interface MapEdgeRow {
   selector: string | null
 }
 
+export interface TestUserRow {
+  id: string
+  user_id: string
+  website_id: string | null
+  label: string
+  username: string
+  password: string
+  login_path: string | null
+  created_at: number
+}
+
 export interface ScenarioRow {
   id: string
   user_id: string
+  website_id: string | null
   name: string
   target_url: string
   map_id: string | null
@@ -76,6 +91,17 @@ export interface ScenarioRow {
   compiled_json: string | null
   compiled_at: number | null
   compile_error: string | null
+  step_delay_ms: number
+  created_at: number
+  updated_at: number
+}
+
+export interface WebsiteRow {
+  id: string
+  user_id: string
+  name: string
+  target_url: string
+  hostname: string
   created_at: number
   updated_at: number
 }

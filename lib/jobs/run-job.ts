@@ -3,6 +3,7 @@ import { getDb, newId, now, SCREENSHOT_DIR } from '@/lib/db'
 import type { RunRow, ScenarioRow } from '@/lib/db/types'
 import { launchBrowser, newContext } from '@/lib/crawl/browser'
 import { executeSteps, type StepOutcome } from '@/lib/scenario/executor'
+import { syncMapFromRun } from '@/lib/scenario/map-sync'
 import { parseStepsJson, type Step } from '@/lib/scenario/steps'
 import { acquireSlot, register, releaseSlot, unregister } from './registry'
 
@@ -45,6 +46,7 @@ export async function runScenarioJob(runId: string): Promise<void> {
           screenshotDir,
           signal: controller.signal,
           noRepair: process.env.DISABLE_AI_REPAIR === 'true',
+          stepPauseMs: scenario.step_delay_ms,
           onProgress: (current, total, message) => {
             db.prepare(
               'UPDATE runs SET progress_current = ?, progress_total = ?, progress_message = ? WHERE id = ?',
@@ -59,6 +61,23 @@ export async function runScenarioJob(runId: string): Promise<void> {
         // A repaired selector is written back so the next run of this scenario
         // resolves deterministically and never pays for AI again.
         if (learned.size) persistLearnedSelectors(scenario, steps, learned)
+
+        // Fold any newly visited pages into this scenario's website's map,
+        // even on a failed or cancelled run — whatever was reached before
+        // that point is still real. Best-effort: a sync problem must not fail
+        // the run itself.
+        if (scenario.website_id) {
+          const websiteMap = db
+            .prepare('SELECT id FROM maps WHERE website_id = ?')
+            .get(scenario.website_id) as { id: string } | undefined
+          if (websiteMap) {
+            try {
+              syncMapFromRun(websiteMap.id, result.outcomes, screenshotDir)
+            } catch (err) {
+              console.error(`[run ${runId}] map sync failed:`, err)
+            }
+          }
+        }
 
         const cancelled = controller.signal.aborted
         db.prepare(

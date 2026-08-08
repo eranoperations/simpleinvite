@@ -13,12 +13,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-slate-800 bg-slate-950/60">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-8">
-            <Link href="/maps" className="font-semibold tracking-tight">
+            <Link href="/websites" className="font-semibold tracking-tight">
               AIS<span className="text-sky-400">Centry</span>
             </Link>
             <nav className="flex items-center gap-1 text-sm">
-              <NavLink href="/maps">Maps</NavLink>
-              <NavLink href="/scenarios">Scenarios</NavLink>
+              <NavLink href="/websites">Websites</NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-400">

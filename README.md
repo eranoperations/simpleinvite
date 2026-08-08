@@ -1,15 +1,31 @@
 # AISCentry
 
-Point it at a URL. A real browser walks the site and draws a **map** of every
-page it finds, with each connection labelled by the link or button that leads
-there. Then describe a test in plain English — *"go to the login page, sign in
-as demo, open the profile and change the name to Ada"* — and watch it execute,
-screenshot by screenshot.
+Add a **website** — a URL and a name. Everything else hangs off it: one
+persistent **map**, its own test **scenarios**, and its own saved **test
+users**. Map the site and a real browser draws a graph of every page it finds,
+each connection labelled by the link or button that leads there. Then describe
+a test in plain English — *"go to the login page, sign in as demo, open the
+profile and change the name to Ada"* — and watch it execute, screenshot by
+screenshot.
 
-An account is required. Maps, scenarios and runs belong to the account that
-created them and are not visible to anyone else.
+An account is required. Websites — and everything under them — belong to the
+account that created them and are not visible to anyone else.
 
 ---
+
+## One website, one map
+
+A website gets its map the moment it's created — empty at first, filled in by
+clicking **Start mapping**. There is deliberately no "new map" flow that spins
+up a second, disconnected snapshot: **Update map** on the Map tab re-crawls
+into that same map, and **Clear map** wipes it back to empty without losing
+the website or its sign-in settings. The map is a live picture of the site,
+not a point-in-time report.
+
+Scenarios and test users belong to the website the same way — created under
+it, scoped to it, gone if it's deleted. A scenario compiles against its own
+website's map (real URLs, real field names) with no map to pick, because
+there's only ever the one.
 
 ## Two features that feed each other
 
@@ -18,6 +34,17 @@ its label and name, every button caption. The scenario compiler receives that
 inventory, which is why *"go to the login page"* becomes the site's real login
 URL and *"enter the username"* resolves to the real field — rather than a guess
 at what the markup probably looks like.
+
+It feeds back the other way too: every scenario run folds the pages it
+actually visited into its website's map — a dashboard reached only after
+signing in, a settings page behind a click a crawler would never try. New
+pages appear as nodes; the connecting edges are dashed emerald and labelled
+with the step that reached them, so it's clear they came from a scenario run
+rather than the crawl. This happens even on a failed or cancelled run —
+whatever was reached before the failure is still real, and it is added to the
+same one map rather than creating a new one. Nothing is ever removed this way;
+**Update map** (a full recrawl) or **Clear map** are the only ways a map sheds
+pages that no longer exist.
 
 ---
 
@@ -34,6 +61,8 @@ edges.
 - **Dotted amber** — a redirect. The content is filed under the URL that served
   it, not the one requested, so a node labelled `/login` never secretly holds
   the profile page.
+- **Dashed emerald** — a page a scenario run walked onto, labelled with the
+  step that got there. See below.
 
 Controls whose label suggests they mutate data or spend money (`delete`,
 `checkout`, `pay`, `submit`, `log out`, …) are never clicked. The crawl is
@@ -46,10 +75,21 @@ every connection.
 
 ### Behind a login
 
-Attach a compiled sign-in scenario to a map. It runs first, in the same browser
-context, and the crawl continues in that signed-in session — so member-only
-pages appear on the graph. If the sign-in fails the map fails loudly, rather
-than quietly mapping the logged-out site.
+Pick a compiled sign-in scenario, or a saved **test user**, from the Map tab
+before clicking Start mapping (or Update map). It runs first, in the same
+browser context, and the crawl continues in that signed-in session — so
+member-only pages appear on the graph. If the sign-in fails the crawl fails
+loudly, rather than quietly mapping the logged-out site.
+
+A test user (managed under the website's **Test users** tab) is a saved
+email/username and password, with an optional login page path (`/login` by
+default). No scenario or AI compilation is needed: the crawler goes to the
+login page, fills the email/username and password fields using common
+patterns (`type="email"`, `type="password"`, `name`/`id` containing "email" or
+"user", `autocomplete` hints), and submits with Enter. It's the fast path for
+an ordinary login form; a compiled scenario is still the answer for anything
+more specific — 2FA prompts, multi-step sign-in, or a form that doesn't match
+those patterns.
 
 ---
 
@@ -123,6 +163,11 @@ tick), passwords stay out of the run record, an authenticated crawl reaches
 `/profile` where a signed-out one cannot, and one account cannot read another's
 maps or screenshots. Exits non-zero on any failure.
 
+> `scripts/smoke.mjs` still drives the pre-website flat API (`POST /api/maps`,
+> `POST /api/scenarios`, …) and needs updating to create a website first and
+> call the routes under `/api/websites/:id/...` described below — it has not
+> been rewritten for this restructuring yet.
+
 The fixture (`fixtures/demo-site` via `fixtures/serve.mjs`) is deliberately
 built with the awkward cases: a button that navigates with no `<a href>`, a
 login form with a session cookie, and a profile page that only exists when
@@ -135,10 +180,11 @@ signed in.
 | Path | What lives there |
 |---|---|
 | `lib/crawl/` | SSRF guard, in-page extraction script, BFS crawler, browser launch |
-| `lib/scenario/` | Step schema, compiler, resolver ladder, AI repair, executor |
+| `lib/scenario/` | Step schema, compiler, resolver ladder, AI repair, executor, map sync |
 | `lib/jobs/` | Detached job runner, progress writes, concurrency cap, stale reaper |
 | `lib/db/` | SQLite connection and schema migrations |
-| `app/(app)/` | Signed-in UI — maps, graph, scenarios, run timeline |
+| `app/(app)/websites/` | Signed-in UI — website list, and per-website Map / Scenarios / Test users / Settings tabs |
+| `app/api/websites/` | Website CRUD, and the map (crawl/cancel/clear) and scenario/test-user creation endpoints, all scoped by website |
 
 Maps and runs execute **in-process, detached** from the request that created
 them, writing progress to SQLite while the client polls. That keeps the

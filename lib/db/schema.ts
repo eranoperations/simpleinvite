@@ -127,10 +127,67 @@ CREATE INDEX IF NOT EXISTS idx_steps_run ON run_steps(run_id, idx);
 `
 
 /**
+ * A saved website login the crawler can use on its own, without a scripted
+ * scenario. The password is plaintext for the same reason a scenario's is:
+ * the executor has to type it into a real form field.
+ */
+const ADD_TEST_USERS = `
+CREATE TABLE IF NOT EXISTS test_users (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label      TEXT NOT NULL,
+  username   TEXT NOT NULL,
+  password   TEXT NOT NULL,
+  login_path TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_test_users_user ON test_users(user_id, created_at DESC);
+
+ALTER TABLE maps ADD COLUMN test_user_id TEXT REFERENCES test_users(id) ON DELETE SET NULL;
+`
+
+/** How long the executor pauses after each step, configurable per scenario. */
+const ADD_STEP_DELAY = `
+ALTER TABLE scenarios ADD COLUMN step_delay_ms INTEGER NOT NULL DEFAULT 1000;
+`
+
+/**
+ * A website is now the organizing unit: its map, scenarios and test users all
+ * hang off it. A map row is created alongside its website and never deleted
+ * on its own, so "one map per website" is a standing invariant rather than
+ * something every reader has to check for — the partial unique index makes
+ * the database enforce it too. Pre-existing maps/scenarios/test_users (from
+ * before this migration) are left with a NULL website_id; nothing in the new,
+ * website-scoped UI can reach them, but they are not deleted.
+ */
+const ADD_WEBSITES = `
+CREATE TABLE IF NOT EXISTS websites (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  target_url TEXT NOT NULL,
+  hostname   TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_websites_user ON websites(user_id, created_at DESC);
+
+ALTER TABLE maps ADD COLUMN website_id TEXT REFERENCES websites(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_maps_website
+  ON maps(website_id) WHERE website_id IS NOT NULL;
+
+ALTER TABLE scenarios ADD COLUMN website_id TEXT REFERENCES websites(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_scenarios_website ON scenarios(website_id, created_at DESC);
+
+ALTER TABLE test_users ADD COLUMN website_id TEXT REFERENCES websites(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_test_users_website ON test_users(website_id, created_at DESC);
+`
+
+/**
  * Append-only. Each entry runs once, in order, and its index is recorded in
  * `user_version` so a database never replays one it has already applied.
  */
-const MIGRATIONS: string[] = [INITIAL]
+const MIGRATIONS: string[] = [INITIAL, ADD_TEST_USERS, ADD_STEP_DELAY, ADD_WEBSITES]
 
 export function migrate(db: BetterSqlite3.Database): void {
   const applied = db.pragma('user_version', { simple: true }) as number

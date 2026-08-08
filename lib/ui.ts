@@ -2,6 +2,7 @@
  *  client trees can use them without duplicating strings. */
 
 export const STATUS_STYLES: Record<string, string> = {
+  idle: 'bg-slate-800/60 text-slate-400 ring-slate-600/40',
   queued: 'bg-slate-700/60 text-slate-200 ring-slate-500/40',
   running: 'bg-sky-500/15 text-sky-300 ring-sky-500/40',
   complete: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/40',

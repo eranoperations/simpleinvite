@@ -1,9 +1,38 @@
 import { getDb } from '@/lib/db'
-import type { MapEdgeRow, MapNodeRow, MapRow, RunRow, RunStepRow, ScenarioRow } from '@/lib/db/types'
+import type {
+  MapEdgeRow,
+  MapNodeRow,
+  MapRow,
+  RunRow,
+  RunStepRow,
+  ScenarioRow,
+  TestUserRow,
+  WebsiteRow,
+} from '@/lib/db/types'
 import { displayPath } from '@/lib/crawl/url-guard'
 
 /** Shapes returned to the browser. Nothing here is a raw row — screenshot paths
  *  become API URLs, and JSON columns are parsed once on the server. */
+
+export interface WebsiteDto {
+  id: string
+  name: string
+  targetUrl: string
+  hostname: string
+  createdAt: number
+  updatedAt: number
+}
+
+export function websiteDto(row: WebsiteRow): WebsiteDto {
+  return {
+    id: row.id,
+    name: row.name,
+    targetUrl: row.target_url,
+    hostname: row.hostname,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
 
 export interface MapSummaryDto {
   id: string
@@ -12,6 +41,8 @@ export interface MapSummaryDto {
   label: string | null
   status: string
   depthProfile: string
+  loginScenarioId: string | null
+  testUserId: string | null
   progress: { current: number; total: number; message: string }
   error: string | null
   stats: Record<string, number> | null
@@ -51,6 +82,8 @@ export function mapSummary(row: MapRow): MapSummaryDto {
     label: row.label,
     status: row.status,
     depthProfile: row.depth_profile,
+    loginScenarioId: row.login_scenario_id,
+    testUserId: row.test_user_id,
     progress: {
       current: row.progress_current,
       total: row.progress_total,
@@ -60,7 +93,26 @@ export function mapSummary(row: MapRow): MapSummaryDto {
     stats: parse<Record<string, number>>(row.stats_json),
     createdAt: row.created_at,
     finishedAt: row.finished_at,
-    authenticated: Boolean(row.login_scenario_id),
+    authenticated: Boolean(row.login_scenario_id || row.test_user_id),
+  }
+}
+
+export interface TestUserDto {
+  id: string
+  label: string
+  username: string
+  loginPath: string | null
+  createdAt: number
+}
+
+/** The password never leaves the server once saved — the run job reads it straight from the row. */
+export function testUserDto(row: TestUserRow): TestUserDto {
+  return {
+    id: row.id,
+    label: row.label,
+    username: row.username,
+    loginPath: row.login_path,
+    createdAt: row.created_at,
   }
 }
 
@@ -104,11 +156,11 @@ export interface ScenarioDto {
   id: string
   name: string
   targetUrl: string
-  mapId: string | null
   sourceText: string
   steps: unknown[] | null
   compiledAt: number | null
   compileError: string | null
+  stepDelayMs: number
   createdAt: number
   updatedAt: number
 }
@@ -118,11 +170,11 @@ export function scenarioDto(row: ScenarioRow): ScenarioDto {
     id: row.id,
     name: row.name,
     targetUrl: row.target_url,
-    mapId: row.map_id,
     sourceText: row.source_text,
     steps: parse<unknown[]>(row.compiled_json),
     compiledAt: row.compiled_at,
     compileError: row.compile_error,
+    stepDelayMs: row.step_delay_ms,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

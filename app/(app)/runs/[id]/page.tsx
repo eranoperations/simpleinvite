@@ -19,15 +19,16 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!row) notFound()
 
   const scenario = getDb()
-    .prepare('SELECT name FROM scenarios WHERE id = ?')
-    .get(row.scenario_id) as { name: string } | undefined
+    .prepare('SELECT name, website_id FROM scenarios WHERE id = ?')
+    .get(row.scenario_id) as { name: string; website_id: string | null } | undefined
+
+  const backHref = scenario?.website_id
+    ? `/websites/${scenario.website_id}/scenarios/${row.scenario_id}`
+    : `/websites`
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      <Link
-        href={`/scenarios/${row.scenario_id}`}
-        className="text-sm text-slate-400 hover:text-slate-200"
-      >
+      <Link href={backHref} className="text-sm text-slate-400 hover:text-slate-200">
         ← {scenario?.name ?? 'Scenario'}
       </Link>
       <RunTimeline initialRun={runDto(row, scenario?.name ?? 'Scenario')} />

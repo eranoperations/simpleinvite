@@ -31,13 +31,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const body = Body.parse(await request.json().catch(() => ({})))
 
+  // A scenario's own website has at most one map — that is what its
+  // "go to the login page" style sentences compile against.
+  const websiteMap = scenario.website_id
+    ? (db.prepare('SELECT id FROM maps WHERE website_id = ?').get(scenario.website_id) as
+        | { id: string }
+        | undefined)
+    : undefined
+
   try {
     const steps = body?.steps
       ? parseSteps(body.steps)
       : await compileScenario({
           sourceText: scenario.source_text,
           targetUrl: scenario.target_url,
-          mapId: scenario.map_id,
+          mapId: websiteMap?.id ?? null,
         })
 
     db.prepare(

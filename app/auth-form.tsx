@@ -14,8 +14,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
 
   // Only accept an internal path — an attacker-supplied absolute URL here would
   // turn the login page into an open redirect.
-  const rawNext = params.get('next') ?? '/maps'
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/maps'
+  const rawNext = params.get('next') ?? '/websites'
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/websites'
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()

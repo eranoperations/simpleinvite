@@ -30,6 +30,8 @@ export interface ExecuteOptions {
   signal?: AbortSignal
   /** Skip the AI repair path entirely — used to prove a run is deterministic. */
   noRepair?: boolean
+  /** Pause after each step, in ms. Defaults to DEFAULT_STEP_PAUSE_MS. */
+  stepPauseMs?: number
 }
 
 export interface ExecuteResult {
@@ -37,6 +39,9 @@ export interface ExecuteResult {
   repairs: number
   failed: boolean
 }
+
+/** Default pause after each step, so the page has time to settle before the next action. */
+export const DEFAULT_STEP_PAUSE_MS = 1000
 
 /**
  * Runs compiled steps in order against one browser context. A failure stops the
@@ -49,6 +54,7 @@ export async function executeSteps(
 ): Promise<ExecuteResult> {
   fs.mkdirSync(opts.screenshotDir, { recursive: true })
 
+  const stepPauseMs = opts.stepPauseMs ?? DEFAULT_STEP_PAUSE_MS
   const outcomes: StepOutcome[] = []
   let repairs = 0
   let failed = false
@@ -97,6 +103,8 @@ export async function executeSteps(
 
       outcomes.push(outcome)
       opts.onStep(outcome)
+
+      await page.waitForTimeout(stepPauseMs)
     }
   } finally {
     await page.close().catch(() => {})
@@ -173,8 +181,7 @@ async function runStep(
       }
 
       case 'assertText': {
-        const body = (await page.textContent('body').catch(() => '')) ?? ''
-        const present = body.toLowerCase().includes(step.text.toLowerCase())
+        const present = await pageContainsText(page, step.text)
         if (step.absent && present) {
           throw new AssertionError(`"${step.text}" is still on the page but should be gone.`)
         }
@@ -267,6 +274,30 @@ async function locate(
 }
 
 class AssertionError extends Error {}
+
+/**
+ * `body.textContent` only ever sees rendered text nodes — a value typed into
+ * an `<input>` or `<textarea>`, or the selected option of a `<select>`, is a
+ * DOM property, not text content, so it never shows up there even though it
+ * is right there on screen. A saved form field is exactly the kind of thing
+ * assertText is used to check, so this also reads those values directly.
+ */
+async function pageContainsText(page: Page, text: string): Promise<boolean> {
+  const haystack = await page
+    .evaluate(() => {
+      const body = document.body.innerText || document.body.textContent || ''
+      const fieldValues = Array.from(document.querySelectorAll('input, textarea')).map(
+        (el) => (el as HTMLInputElement | HTMLTextAreaElement).value || '',
+      )
+      const selected = Array.from(document.querySelectorAll('select')).map(
+        (el) => (el as HTMLSelectElement).selectedOptions[0]?.text || '',
+      )
+      return [body, ...fieldValues, ...selected].join('\n')
+    })
+    .catch(() => '')
+
+  return haystack.toLowerCase().includes(text.toLowerCase())
+}
 
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
