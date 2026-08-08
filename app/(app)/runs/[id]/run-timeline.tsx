@@ -1,13 +1,35 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { RunDto } from '@/lib/api/serialize'
 import { formatDuration, formatWhen, STEP_STYLES, statusClass } from '@/lib/ui'
 
+interface FixResult {
+  category: 'steps' | 'website' | 'unclear'
+  diagnosis: string
+  suggestion: string
+  fixedSourceText: string | null
+  usedScreenshots: boolean
+}
+
+const CATEGORY_LABEL: Record<FixResult['category'], string> = {
+  steps: 'The compiled steps look wrong',
+  website: 'The website may not match what the scenario expects',
+  unclear: "Couldn't pin down the cause",
+}
+
 export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
+  const router = useRouter()
   const [run, setRun] = useState(initialRun)
   const [openStep, setOpenStep] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const [fixing, setFixing] = useState(false)
+  const [fixError, setFixError] = useState<string | null>(null)
+  const [fixResult, setFixResult] = useState<FixResult | null>(null)
+  const [applying, setApplying] = useState(false)
+  const [applyMessage, setApplyMessage] = useState<string | null>(null)
 
   const live = run.status === 'queued' || run.status === 'running'
 
@@ -33,6 +55,74 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
     await navigator.clipboard.writeText(formatRunOutput(run))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function fixWithAi() {
+    setFixing(true)
+    setFixError(null)
+    setFixResult(null)
+    setApplyMessage(null)
+    try {
+      const res = await fetch(`/api/runs/${run.id}/fix`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setFixError(data.error ?? 'Could not diagnose the run.')
+        return
+      }
+      setFixResult(data as FixResult)
+    } catch {
+      setFixError('Could not reach the server.')
+    } finally {
+      setFixing(false)
+    }
+  }
+
+  async function applyFix(): Promise<boolean> {
+    if (!fixResult?.fixedSourceText) return false
+    setApplying(true)
+    setApplyMessage(null)
+    try {
+      // The rewritten text is the fix — it stays the one source of truth, so
+      // applying it means saving the text and recompiling through the normal
+      // pipeline, exactly like a hand edit would.
+      const patchRes = await fetch(`/api/scenarios/${run.scenarioId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceText: fixResult.fixedSourceText }),
+      })
+      if (!patchRes.ok) {
+        const data = await patchRes.json().catch(() => ({}))
+        setApplyMessage(data.error ?? 'Could not save the rewritten scenario.')
+        return false
+      }
+
+      const compileRes = await fetch(`/api/scenarios/${run.scenarioId}/compile`, { method: 'POST' })
+      const compileData = await compileRes.json().catch(() => ({}))
+      if (!compileRes.ok) {
+        setApplyMessage(
+          `Saved the rewritten scenario, but it could not compile: ${compileData.error ?? 'unknown error'}`,
+        )
+        return false
+      }
+
+      setApplyMessage(
+        `Fix applied — the scenario text was updated and recompiled into ${compileData.steps?.length ?? '?'} steps.`,
+      )
+      return true
+    } catch {
+      setApplyMessage('Could not reach the server.')
+      return false
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  async function applyFixAndRerun() {
+    const applied = await applyFix()
+    if (!applied) return
+    const res = await fetch(`/api/scenarios/${run.scenarioId}/run`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) router.push(`/runs/${data.id}`)
   }
 
   const passed = run.steps.filter((s) => s.status === 'passed' || s.status === 'repaired').length
@@ -70,6 +160,15 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
           >
             {copied ? 'Copied!' : 'Copy output'}
           </button>
+          {run.status === 'failed' && (
+            <button
+              onClick={fixWithAi}
+              disabled={fixing}
+              className="rounded-lg border border-violet-500/50 px-3 py-1.5 text-sm text-violet-300 hover:border-violet-400 hover:bg-violet-500/10 disabled:opacity-50"
+            >
+              {fixing ? 'Diagnosing…' : 'Fix with AI'}
+            </button>
+          )}
           {live && (
             <button
               onClick={cancel}
@@ -89,6 +188,72 @@ export function RunTimeline({ initialRun }: { initialRun: RunDto }) {
       {run.error && (
         <div className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           {run.error}
+        </div>
+      )}
+
+      {fixError && (
+        <div className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {fixError}
+        </div>
+      )}
+
+      {fixResult && (
+        <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-medium text-violet-200">
+              {CATEGORY_LABEL[fixResult.category]}
+            </h2>
+            <span
+              className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400"
+              title={
+                fixResult.usedScreenshots
+                  ? "Looked at the failing step's screenshots, not just the text log"
+                  : 'Based on the text log only — no screenshot was available or the model could not use one'
+              }
+            >
+              {fixResult.usedScreenshots ? 'used screenshots' : 'text only'}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-200">{fixResult.diagnosis}</p>
+          {fixResult.suggestion && (
+            <p className="mt-2 text-sm text-slate-400">
+              <span className="text-slate-300">What you could try: </span>
+              {fixResult.suggestion}
+            </p>
+          )}
+
+          {fixResult.fixedSourceText && (
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Proposed rewrite of the scenario text
+              </p>
+              <pre className="mt-2 whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-950/60 p-3 font-sans text-sm leading-relaxed text-slate-200">
+                {fixResult.fixedSourceText}
+              </pre>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Applying this replaces the scenario&rsquo;s text and recompiles it — nothing runs until
+                you run the test again.
+              </p>
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={applyFixAndRerun}
+                  disabled={applying}
+                  className="rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+                >
+                  {applying ? 'Applying…' : 'Apply fix and run again'}
+                </button>
+                <button
+                  onClick={applyFix}
+                  disabled={applying}
+                  className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-slate-500 disabled:opacity-50"
+                >
+                  {applying ? 'Applying…' : 'Apply fix only'}
+                </button>
+                {applyMessage && <span className="text-xs text-slate-400">{applyMessage}</span>}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

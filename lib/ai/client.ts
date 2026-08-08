@@ -1,8 +1,13 @@
 import { getAiConfig, type AiConfig } from './config'
 
+export type ContentPart =
+  | { type: 'text'; text: string }
+  /** `data` is raw base64, no `data:` URI prefix — each wire format wraps it differently. */
+  | { type: 'image'; mediaType: string; data: string }
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[]
 }
 
 export interface CompleteOptions {
@@ -50,8 +55,31 @@ function headers(cfg: AiConfig): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` }
 }
 
+/** Each wire format wraps an image in its own envelope; plain text passes through untouched. */
+function toProviderContent(cfg: AiConfig, content: ChatMessage['content']): unknown {
+  if (typeof content === 'string') return content
+
+  if (cfg.provider === 'anthropic') {
+    return content.map((part) =>
+      part.type === 'text'
+        ? { type: 'text', text: part.text }
+        : { type: 'image', source: { type: 'base64', media_type: part.mediaType, data: part.data } },
+    )
+  }
+
+  return content.map((part) =>
+    part.type === 'text'
+      ? { type: 'text', text: part.text }
+      : { type: 'image_url', image_url: { url: `data:${part.mediaType};base64,${part.data}` } },
+  )
+}
+
 function requestBody(cfg: AiConfig, messages: ChatMessage[], opts: CompleteOptions): unknown {
   const maxTokens = opts.maxTokens ?? cfg.maxTokens
+  const providerMessages = messages.map((m) => ({
+    role: m.role,
+    content: toProviderContent(cfg, m.content),
+  }))
 
   if (cfg.provider === 'anthropic') {
     return {
@@ -59,7 +87,7 @@ function requestBody(cfg: AiConfig, messages: ChatMessage[], opts: CompleteOptio
       max_tokens: maxTokens,
       ...(opts.system ? { system: opts.system } : {}),
       ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-      messages,
+      messages: providerMessages,
     }
   }
 
@@ -69,7 +97,7 @@ function requestBody(cfg: AiConfig, messages: ChatMessage[], opts: CompleteOptio
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     messages: [
       ...(opts.system ? [{ role: 'system' as const, content: opts.system }] : []),
-      ...messages,
+      ...providerMessages,
     ],
   }
 }
