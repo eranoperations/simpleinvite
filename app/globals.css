@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+
+@theme {
+  --color-ink: #0b0f19;
+  --color-panel: #111827;
+  --color-edge: #1f2937;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink);
+  color: #e5e7eb;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* The graph canvas supplies its own surface; keep React Flow's default white
+   panel from punching a hole in the dark layout. */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__controls-button {
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  fill: #e5e7eb;
+}
+.react-flow__controls-button:hover {
+  background: #374151;
+}
+.react-flow__minimap {
+  background: #111827;
+}
+.react-flow__edge-text {
+  fill: #cbd5e1;
+  font-size: 10px;
+}
+.react-flow__edge-textbg {
+  fill: #0b0f19;
+}
